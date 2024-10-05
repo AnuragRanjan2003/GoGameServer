@@ -1,0 +1,2 @@
+# GoGameServer
+golang game server
