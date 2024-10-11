@@ -1,8 +1,10 @@
 package room
 
 import (
+	"context"
 	"log"
-	"example.com/main/data"
+
+	game "example.com/main/data/game"
 	"example.com/main/types"
 	"github.com/gorilla/websocket"
 )
@@ -26,17 +28,32 @@ func NewRoom(rid string) *Room {
 	}
 }
 
-func (r *Room) AddPlayer(user data.User, role Role, conn *websocket.Conn) {
+func (r *Room) AddPlayer(user game.User, role Role, conn *websocket.Conn) {
 	r.roles[user.Uid] = role
 	r.conns[user.Uid] = conn
 }
 
-func (r Room) BroadcastDelta(delta types.Delta){
+func (r Room) BroadcastDelta(delta types.Delta, ctx context.Context) {
 	// uid := delta.GetProducer()
 
-	for _,conn := range r.conns {
-		conn.WriteJSON(delta)
+	for _, conn := range r.conns {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			conn.WriteJSON(delta)
+		}
 	}
 }
+func (r *Room) RemovePlayer(uid string) {
+	delete(r.roles, uid)
+	delete(r.conns, uid)
+}
 
+func (r Room) CurrentSize() int {
+	return len(r.conns)
+}
 
+func (r Room) GetId() string {
+	return r.roomid
+}
