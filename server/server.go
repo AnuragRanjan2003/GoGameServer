@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
-	"encoding/json"
+	// "encoding/json"
+	// "fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"time"
@@ -55,23 +57,20 @@ func (s *Server) HandleWSConnection(w http.ResponseWriter, r *http.Request) {
 func (s *Server) readLooper(conn *websocket.Conn, uid string, room *room.Room) {
 	defer conn.Close()
 	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		default:
-			delta := game.GameDelta{}
 
-			err := conn.ReadJSON(&delta)
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					s.onDisconnect(uid, room)
-				}
+		delta := game.GameDelta{}
+
+		err := conn.ReadJSON(&delta)
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				s.onDisconnect(uid, room)
+			} else {
 				log.Println("json error:", err)
-				break
 			}
-			log.Println("message:", delta)
-			go room.BroadcastDelta(delta,s.ctx)
+			break
 		}
+		log.Println("message:", delta)
+		go room.BroadcastDelta(delta, s.ctx)
 
 	}
 }
@@ -102,17 +101,50 @@ func (s Server) GetRoomsList() []info.RoomInfo {
 }
 
 func (s *Server) HandleInfoRequest(w http.ResponseWriter, r *http.Request) {
-	info := &info.ServerInfo{
+	status := &info.ServerInfo{
 		Rooms:     s.GetRoomsCount(),
 		TimeStamp: time.Now().UTC(),
 		RoomInfo:  s.GetRoomsList(),
 	}
-
-	_json, err := json.Marshal(*info)
-
+	tmpl, err := template.ParseFiles("./public/index.html")
 	if err != nil {
+		http.Error(w, "Unable to load template", http.StatusInternalServerError)
 		return
 	}
 
-	w.Write(_json)
+	err = tmpl.Execute(w, status)
+	if err != nil {
+		http.Error(w, "Unable to execute template : "+err.Error(), http.StatusInternalServerError)
+	}
+
+}
+
+func (s *Server) ServeTemplate(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("./public/index.html")
+	if err != nil {
+		http.Error(w, "Unable to load template", http.StatusInternalServerError)
+		return
+	}
+
+	info := &info.ServerInfo{
+		Rooms:            s.GetRoomsCount(),
+		TimeStamp:        time.Now().UTC(),
+		RoomInfo:         s.GetRoomsList(),
+		TotalConnections: s.GetActiveConnections(),
+	}
+
+	err = tmpl.Execute(w, info)
+	if err != nil {
+		http.Error(w, "Unable to execute template", http.StatusInternalServerError)
+	}
+}
+
+func (s Server) GetActiveConnections() uint {
+	var sum uint = 0
+
+	for _, r := range s.GetRoomsList() {
+		sum += r.Players
+	}
+
+	return sum
 }

@@ -20,6 +20,7 @@ func NewApp(ctx context.Context) *App {
 func (a *App) Start(port string) error {
 	http.HandleFunc("/join", setCSP(a.server.HandleWSConnection))
 	http.HandleFunc("/info", a.server.HandleInfoRequest)
+	http.HandleFunc("/status", a.server.ServeTemplate)
 	err := http.ListenAndServe(port, nil)
 	return err
 }
